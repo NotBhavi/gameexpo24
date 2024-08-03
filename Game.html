@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBSE EXPO GAME BY LAHS</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            width: 300px;
+            height: 500px;
+            background-color: #8B4513;
+            border: 2px solid #4285f4;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+        #lane {
+            width: 80%;
+            height: 100%;
+            background-color: #DEB887;
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+        #lane::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 4px;
+            height: 100%;
+            background-color: #F4A460;
+            transform: translateX(-50%);
+        }
+        #ball {
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle at 30% 30%, #ff6b6b, #ea4335);
+            border-radius: 50%;
+            position: absolute;
+            bottom: 20px;
+            left: 135px;
+            cursor: grab;
+            z-index: 10;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+        }
+        .pin {
+            width: 15px;
+            height: 25px;
+            background: linear-gradient(to bottom, #ffffff, #f0f0f0);
+            border-radius: 50% 50% 20% 20%;
+            position: absolute;
+            z-index: 5;
+            transition: transform 0.2s;
+        }
+        .pin::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 10px;
+            height: 10px;
+            background-color: #ff4444;
+            border-radius: 50%;
+        }
+        #score, #throw-count, #frame-score {
+            position: absolute;
+            left: 10px;
+            font-size: 18px;
+            color: #ffffff;
+            z-index: 20;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        #score { top: 10px; }
+        #throw-count { top: 40px; }
+        #frame-score { top: 70px; }
+        #power-meter {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 20px;
+            height: 100px;
+            background-color: #ddd;
+            z-index: 20;
+        }
+        #power-bar {
+            width: 100%;
+            height: 0%;
+            background-color: #4CAF50;
+            transition: height 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="lane"></div>
+        <div id="ball"></div>
+        <div id="score">Score: 0</div>
+        <div id="throw-count">Frame: 1 | Roll: 1</div>
+        <div id="frame-score">Frame Score: -</div>
+        <div id="power-meter"><div id="power-bar"></div></div>
+    </div>
+
+    <script>
+        const ball = document.getElementById('ball');
+        const gameContainer = document.getElementById('game-container');
+        const lane = document.getElementById('lane');
+        const scoreElement = document.getElementById('score');
+        const throwCountElement = document.getElementById('throw-count');
+        const frameScoreElement = document.getElementById('frame-score');
+        const powerBar = document.getElementById('power-bar');
+
+        let totalScore = 0;
+        let frameScore = 0;
+        let currentFrame = 1;
+        let currentRoll = 1;
+        let pinsDown = 0;
+        let ballX = 135;
+        let ballY = 450;
+        let ballSpeedX = 0;
+        let ballSpeedY = 0;
+        let isDragging = false;
+        let startX, startY;
+        let power = 0;
+        let isPowerIncreasing = true;
+        let spinDirection = 0;
+        let throwCount = 0;
+
+        function createPins() {
+            const pinPositions = [
+                {x: 50, y: 50},
+                {x: 42, y: 80}, {x: 58, y: 80},
+                {x: 34, y: 110}, {x: 50, y: 110}, {x: 66, y: 110},
+                {x: 26, y: 140}, {x: 42, y: 140}, {x: 58, y: 140}, {x: 74, y: 140}
+            ];
+
+            pinPositions.forEach((pos, index) => {
+                const pin = document.createElement('div');
+                pin.className = 'pin';
+                pin.style.left = pos.x + '%';
+                pin.style.top = pos.y + 'px';
+                pin.dataset.index = index;
+                lane.appendChild(pin);
+            });
+        }
+
+        function resetGame() {
+            totalScore = 0;
+            frameScore = 0;
+            currentFrame = 1;
+            currentRoll = 1;
+            pinsDown = 0;
+            throwCount = 0;
+            resetBall();
+            updateScore();
+            lane.innerHTML = '';
+            createPins();
+        }
+
+        function updateBallPosition() {
+            ballX += ballSpeedX + spinDirection;
+            ballY -= ballSpeedY;
+
+            const laneRect = lane.getBoundingClientRect();
+            const ballRect = ball.getBoundingClientRect();
+
+            if (ballRect.left < laneRect.left || ballRect.right > laneRect.right) {
+                ballSpeedX = -ballSpeedX * 0.5;
+            }
+
+            if (ballRect.top < laneRect.top) {
+                ballSpeedY = -ballSpeedY * 0.5;
+            }
+
+            if (ballRect.bottom > laneRect.bottom) {
+                ballY = laneRect.height - ballRect.height / 2;
+                ballSpeedY = 0;
+            }
+
+            ball.style.left = (ballX - laneRect.left) + 'px';
+            ball.style.bottom = (laneRect.bottom - ballY - ballRect.height / 2) + 'px';
+
+            ballSpeedX *= 0.95;
+            ballSpeedY *= 0.95;
+            spinDirection *= 0.95;
+
+            checkPinCollision();
+
+            if (Math.abs(ballSpeedX) < 0.1 && Math.abs(ballSpeedY) < 0.1) {
+                ballSpeedX = 0;
+                ballSpeedY = 0;
+                spinDirection = 0;
+                setTimeout(() => {
+                    endRoll();
+                }, 1000);
+            } else {
+                requestAnimationFrame(updateBallPosition);
+            }
+        }
+
+        function checkPinCollision() {
+            const pins = document.getElementsByClassName('pin');
+            for (let pin of pins) {
+                const pinRect = pin.getBoundingClientRect();
+                const ballRect = ball.getBoundingClientRect();
+                if (!(
+                    ballRect.right < pinRect.left ||
+                    ballRect.left > pinRect.right ||
+                    ballRect.bottom < pinRect.top ||
+                    ballRect.top > pinRect.bottom
+                )) {
+                    pin.style.transform = 'rotate(45deg) translateY(20px)';
+                    setTimeout(() => pin.remove(), 200);
+                    pinsDown++;
+                }
+            }
+        }
+
+        function resetBall() {
+            const laneRect = lane.getBoundingClientRect();
+            ballX = laneRect.left + laneRect.width / 2;
+            ballY = laneRect.bottom - 30;
+            ball.style.left = (ballX - laneRect.left) + 'px';
+            ball.style.bottom = '20px';
+        }
+
+        function updateScore() {
+            scoreElement.textContent = `Total Score: ${totalScore}`;
+            throwCountElement.textContent = `Frame: ${currentFrame} | Roll: ${currentRoll}`;
+            
+            let frameScoreText = '-';
+            if (pinsDown === 10 && currentRoll === 1) {
+                frameScoreText = 'Strike!';
+            } else if (pinsDown === 10 && currentRoll === 2) {
+                frameScoreText = 'Spare!';
+            } else if (currentRoll === 2) {
+                frameScoreText = pinsDown;
+            }
+            frameScoreElement.textContent = `Frame Score: ${frameScoreText}`;
+        }
+
+        function endRoll() {
+            totalScore += pinsDown;
+            frameScore = pinsDown;
+            pinsDown = 0;
+            if (currentRoll === 1) {
+                currentRoll++;
+            } else {
+                currentFrame++;
+                currentRoll = 1;
+            }
+            throwCount++;
+            if (throwCount >= 5) {
+                alert(`Game Over! Total Score: ${totalScore}`);
+                resetGame();
+                return;
+            }
+            resetBall();
+            updateScore();
+        }
+
+        function launchBall() {
+            ballSpeedX = (Math.random() * 2 - 1) * 10;  // Increased speed
+            ballSpeedY = (Math.random() * 2 + 1) * 10;  // Increased speed
+            spinDirection = (Math.random() - 0.5) * 1.5;  // Slightly increased spin
+            updateBallPosition();
+        }
+
+        function updatePowerMeter() {
+            if (isPowerIncreasing) {
+                power += 2;
+                if (power >= 100) {
+                    isPowerIncreasing = false;
+                }
+            } else {
+                power -= 2;
+                if (power <= 0) {
+                    isPowerIncreasing = true;
+                }
+            }
+            powerBar.style.height = `${power}%`;
+            if (isDragging) {
+                requestAnimationFrame(updatePowerMeter);
+            }
+        }
+
+        ball.addEventListener('pointerdown', (e) => {
+            isDragging = true;
+            startX = e.clientX - ball.offsetLeft;
+            startY = e.clientY - ball.offsetTop;
+            ball.style.cursor = 'grabbing';
+            updatePowerMeter();
+        });
+
+        document.addEventListener('pointermove', (e) => {
+            if (isDragging) {
+                const laneRect = lane.getBoundingClientRect();
+                const newX = e.clientX - startX - laneRect.left;
+                ball.style.left = Math.max(0, Math.min(newX, laneRect.width - 30)) + 'px';
+            }
+        });
+
+        document.addEventListener('pointerup', (e) => {
+            if (isDragging) {
+                isDragging = false;
+                ball.style.cursor = 'grab';
+                launchBall();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                if (!isDragging) {
+                    isDragging = true;
+                    updatePowerMeter();
+                } else {
+                    isDragging = false;
+                    launchBall();
+                }
+            } else if (e.code === 'KeyQ') {
+                spinDirection -= 0.5;
+            } else if (e.code === 'KeyE') {
+                spinDirection += 0.5;
+            }
+        });
+
+        resetGame();
+    </script>
+</body>
+</html>
